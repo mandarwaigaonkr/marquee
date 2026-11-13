@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marquee design mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Flat, square, black. Colour comes only from the video frames. */
+:root {
+  --canvas: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #161616;
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.24);
+  --text: #ededed;
+  --text-secondary: #8f8f8f;
+  --accent: #ffffff;
+  --accent-ink: #000000;
+
+  --font-ui: "Geist", "Segoe UI Variable", system-ui, sans-serif;
+  --text-meta: 0.75rem;
+  --text-small: 0.875rem;
+  --text-body: 1rem;
+  --text-h3: 1.25rem;
+  --text-h2: 1.75rem;
+  --text-h1: 3rem;
+
+  --fast: 150ms;
+  --base: 200ms;
+  --slide: 300ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+* { box-sizing: border-box; border-radius: 0; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--canvas); color: var(--text); font: 400 var(--text-body)/1.55 var(--font-ui); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+img { display: block; width: 100%; height: 100%; object-fit: cover; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { font-weight: 600; line-height: 1.15; margin: 0; letter-spacing: -0.02em; }
+.meta { font-size: var(--text-meta); line-height: 1.4; color: var(--text-secondary); }
+.small { font-size: var(--text-small); color: var(--text-secondary); }
+.num { font-variant-numeric: tabular-nums; }
+svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: square; flex: none; }
+svg.solid { fill: currentColor; stroke: none; }
+
+/* shell */
+.app { display: grid; grid-template-columns: 64px 1fr; height: 100%; }
+.rail { border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; }
+.rail .mark { font-weight: 600; font-size: var(--text-h3); line-height: 1; width: 36px; height: 36px; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); margin-bottom: 16px; }
+.rail button { width: 44px; height: 44px; display: grid; place-items: center; color: var(--text-secondary); }
+.rail button:hover, .rail button[aria-current="page"] { background: var(--surface-2); color: var(--text); }
+.rail .spacer { flex: 1; }
+main { overflow-y: auto; }
+.view { display: none; }
+.view.on { display: block; animation: view-in var(--base) var(--ease); }
+@keyframes view-in { from { opacity: 0; transform: translateY(8px); } }
+.page { max-width: 1440px; margin: 0 auto; padding: 32px 48px 64px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; }
+.head h2 { font-size: var(--text-h3); }
+section + section, .block + .block { margin-top: 56px; }
+.jump { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); color: var(--text-secondary); font-size: var(--text-small); min-width: 264px; }
+.jump:hover { border-color: var(--line-strong); color: var(--text); }
+kbd { font: 500 var(--text-meta)/1 var(--font-ui); padding: 4px 8px; border: 1px solid var(--line-strong); color: var(--text-secondary); margin-left: auto; }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 20px; font-weight: 600; white-space: nowrap; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { background: #cfcfcf; }
+.btn.quiet { border: 1px solid var(--line-strong); font-weight: 500; }
+.btn.quiet:hover { background: var(--surface-2); }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.progress { height: 2px; background: var(--line-strong); }
+.progress i { display: block; height: 100%; background: var(--accent); }
+.icon-btn { width: 44px; height: 44px; display: grid; place-items: center; }
+.icon-btn:hover { background: rgba(255,255,255,.14); }
+
+/* home: continue */
+.continue { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); border: 1px solid var(--line); }
+.continue .shot { aspect-ratio: 16 / 9; overflow: hidden; }
+.continue .info { padding: 32px; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
+.continue h1 { font-size: var(--text-h1); letter-spacing: -0.03em; margin: 8px 0; }
+.continue .progress { margin: auto 0 12px; }
+.continue .actions { margin-top: 24px; }
+.rows { border: 1px solid var(--line); border-top: 0; }
+.row { display: grid; grid-template-columns: 128px 1fr auto; gap: 16px; align-items: center; width: 100%; padding: 12px 16px 12px 12px; border-top: 1px solid var(--line); }
+.row:hover { background: var(--surface); }
+.row .thumb { aspect-ratio: 16 / 9; overflow: hidden; }
+.row .title { font-weight: 500; }
+.row .end { display: flex; align-items: center; gap: 16px; color: var(--text-secondary); font-size: var(--text-small); }
+.row .progress { width: 96px; }
+
+/* library: the expanding gallery (the only one in the app).
+   Every panel is laid out at its open width and only ever moves with a
+   transform, so opening one never triggers layout or repaint. */
+.gallery { position: relative; height: 440px; overflow: hidden; border: 1px solid var(--line); }
+.panel { position: absolute; top: 0; bottom: 0; left: 0; width: var(--open); background: var(--canvas); border-left: 1px solid var(--line); overflow: hidden; cursor: pointer; will-change: transform; transition: transform var(--slide) var(--ease); }
+.panel:first-child { border-left: 0; }
+.panel .shot { position: absolute; inset: 0 0 112px 0; overflow: hidden; }
+.panel .shot img { will-change: transform; transform: translateX(var(--drift)); transition: transform var(--slide) var(--ease); }
+.panel.on .shot img { transform: none; }
+.panel .dim { position: absolute; inset: 0 0 112px 0; background: #000; opacity: .6; transition: opacity var(--slide) var(--ease); }
+.panel.on .dim { opacity: 0; }
+.panel .spine { position: absolute; top: 0; left: 0; bottom: 112px; width: var(--closed); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 16px; transition: opacity var(--fast) var(--ease); }
+.panel .spine span { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 600; font-size: var(--text-h3); line-height: 1; white-space: nowrap; }
+.panel.on .spine { opacity: 0; }
+.panel .cap { position: absolute; left: 0; right: 0; bottom: 0; height: 112px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid var(--line); opacity: 0; transition: opacity var(--fast) var(--ease); }
+.panel.on .cap { opacity: 1; transition-delay: var(--fast); }
+.panel .cap h3 { font-size: var(--text-h2); }
+.panel .count { position: absolute; left: 0; bottom: 0; width: var(--closed); height: 112px; display: grid; place-items: center; color: var(--text-secondary); font-size: var(--text-small); transition: opacity var(--fast) var(--ease); }
+.panel.on .count { opacity: 0; }
+.panel.add { width: var(--closed); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-secondary); }
+.panel.add:hover { color: var(--text); background: var(--surface); }
+
+/* series */
+.series-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); border-bottom: 1px solid var(--line); }
+.series-top .info { padding: 24px 48px 40px; display: flex; flex-direction: column; }
+.series-top .shot { aspect-ratio: 16 / 9; overflow: hidden; border-left: 1px solid var(--line); }
+.back { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; color: var(--text-secondary); font-size: var(--text-small); min-height: 44px; padding: 0 12px 0 4px; }
+.back:hover { color: var(--text); background: var(--surface-2); }
+.series-top h1 { font-size: var(--text-h1); letter-spacing: -0.03em; margin-top: auto; }
+.series-top .small { margin: 8px 0 24px; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs button { min-height: 44px; padding: 0 16px; color: var(--text-secondary); font-size: var(--text-small); font-weight: 500; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button:hover { color: var(--text); }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.eps { border: 1px solid var(--line); border-top: 0; }
+.eps .row { grid-template-columns: 32px 160px 1fr auto; }
+.eps .row:first-child { border-top: 0; }
+.eps .row .n { color: var(--text-secondary); text-align: right; }
+.eps .row.now { background: var(--surface); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* player */
+#player { position: fixed; inset: 0; z-index: 20; background: #000; animation: fade var(--base) var(--ease); }
+@keyframes fade { from { opacity: 0; } }
+#player > img { position: absolute; inset: 0; }
+#player .sub { position: absolute; left: 0; right: 0; bottom: 136px; text-align: center; font-size: var(--text-h2); font-weight: 500; line-height: 1.3; text-shadow: 0 0 4px #000, 0 2px 4px #000; }
+.chrome { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; transition: opacity var(--base) var(--ease); }
+.chrome.idle { opacity: 0; cursor: none; }
+.bar { background: rgba(0, 0, 0, 0.72); }
+.chrome .top { padding: 12px 24px; display: flex; gap: 12px; align-items: center; }
+.chrome .top h3 { font-size: var(--text-body); }
+.chrome .bottom { padding: 4px 24px 12px; }
+.scrub { position: relative; height: 28px; display: flex; align-items: center; cursor: pointer; }
+.scrub .track { position: relative; width: 100%; height: 2px; background: rgba(255,255,255,.28); transition: transform var(--fast) var(--ease); }
+.scrub:hover .track { transform: scaleY(3); }
+.scrub .fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.scrub .chap { position: absolute; top: 0; bottom: 0; width: 2px; background: #000; }
+.peek { position: absolute; bottom: 36px; width: 192px; margin-left: -96px; border: 1px solid var(--line-strong); background: #000; pointer-events: none; opacity: 0; transition: opacity var(--fast) var(--ease); }
+.scrub:hover .peek { opacity: 1; }
+.peek img { aspect-ratio: 16 / 9; height: auto; }
+.peek span { display: block; text-align: center; font-size: var(--text-meta); padding: 4px 0; }
+.ctl { display: flex; align-items: center; gap: 4px; }
+.ctl .time { font-size: var(--text-small); margin: 0 12px; }
+.ctl .gap { flex: 1; }
+.pop, .next { position: absolute; right: 24px; background: var(--canvas); border: 1px solid var(--line-strong); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity var(--fast) var(--ease), transform var(--fast) var(--ease); }
+.pop.on, .next.on { opacity: 1; transform: none; pointer-events: auto; }
+.pop { bottom: 104px; width: 320px; padding: 8px 0; }
+.pop h4 { font: 500 var(--text-meta)/1.4 var(--font-ui); color: var(--text-secondary); margin: 8px 16px 4px; }
+.pop button { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px; padding: 0 16px; font-size: var(--text-small); }
+.pop button:hover { background: var(--surface-2); }
+.pop button[aria-checked="true"] { box-shadow: inset 2px 0 0 var(--accent); }
+.next { bottom: 104px; width: 360px; display: grid; grid-template-columns: 144px 1fr; }
+.next .thumb { aspect-ratio: 16 / 9; }
+.next .txt { padding: 8px 12px; display: flex; flex-direction: column; justify-content: space-between; border-left: 1px solid var(--line); }
+.next .btn { height: 44px; align-self: flex-start; padding: 0 12px; font-size: var(--text-small); background: none; color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+.side { position: absolute; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100vw; background: var(--canvas); border-left: 1px solid var(--line-strong); transform: translateX(100%); transition: transform var(--slide) var(--ease); display: flex; flex-direction: column; z-index: 2; }
+.side.on { transform: none; }
+.side header { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--line); }
+.side .list { overflow-y: auto; }
+.side .row { grid-template-columns: 24px 96px 1fr; padding: 8px 16px 8px 12px; }
+.side .row:first-child { border-top: 0; }
+.side .row.now { background: var(--surface); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* tooltips */
+[data-tip] { position: relative; }
+[data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 50; padding: 4px 8px; background: var(--accent); color: var(--accent-ink); font: 500 var(--text-meta)/1.4 var(--font-ui); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--fast) var(--ease); }
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; }
+.rail [data-tip]::after { bottom: auto; top: 50%; left: calc(100% + 8px); transform: translateY(-50%); }
+.chrome .top [data-tip]::after, .side header [data-tip]::after { bottom: auto; top: calc(100% + 8px); left: 0; transform: none; }
+.side header [data-tip]::after { left: auto; right: 0; }
+.ctl [data-tip]:last-child::after { left: auto; right: 0; transform: none; }
+
+/* command bar */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 40; display: flex; align-items: flex-start; justify-content: center; padding-top: 16vh; opacity: 0; pointer-events: none; transition: opacity var(--fast) var(--ease); }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.kbar { width: 600px; max-width: calc(100vw - 32px); background: var(--canvas); border: 1px solid var(--line-strong); }
+.kq { display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); color: var(--text-secondary); white-space: nowrap; }
+.kq:focus-within { border-bottom-color: var(--accent); }
+.kbar input { flex: 1; min-width: 0; height: 56px; background: none; border: 0; color: var(--text); font: 400 var(--text-body)/1.3 var(--font-ui); outline: none; }
+.kbar ul { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; }
+.kbar li { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 16px; cursor: pointer; }
+.kbar li.sel, .kbar li:hover { background: var(--surface-2); }
+.kbar li span:last-child { color: var(--text-secondary); font-size: var(--text-small); }
+.kbar .clear { color: var(--text); text-decoration: underline; min-height: 44px; }
+
+@media (max-width: 900px) {
+  .page { padding: 24px 16px 48px; }
+  .jump { min-width: 0; } .jump span { display: none; }
+  .continue, .series-top { grid-template-columns: 1fr; }
+  .continue .info, .series-top .shot { border-left: 0; border-top: 1px solid var(--line); }
+  .continue .info, .series-top .info { padding: 16px; }
+  .continue h1, .series-top h1 { font-size: var(--text-h2); }
+  .row, .eps .row { grid-template-columns: 96px 1fr; } .row .end, .eps .row .n { display: none; }
+  .gallery { height: 360px; }
+  .panel .cap { flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; }
+  .panel .cap .small { display: none; }
+  .ctl { flex-wrap: wrap; }
+  .pop, .next { right: 8px; width: calc(100vw - 16px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation: none !important; transition-delay: 0s !important; }
+  .panel .shot img { transform: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail" aria-label="Main">
+    <div class="mark" aria-hidden="true">M</div>
+    <button aria-current="page" title="Home" onclick="go('home')"><svg class="i" viewBox="0 0 24 24"><path d="M4 5h4v14H4zM11 5h9v14h-9z"/></svg></button>
+    <button title="Movies"><svg class="i" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM8 5v14M16 5v14M3 12h18"/></svg></button>
+    <button title="Search (Ctrl K)" onclick="kbar(true)"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.500-4.500"/></svg></button>
+    <div class="spacer"></div>
+    <button title="Settings"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4h4V5zM6 15v4h4v-4z"/></svg></button>
+  </nav>
+
+  <main>
+    <!-- Home: overview pattern -->
+    <div class="view on" id="home"><div class="page">
+      <section>
+        <div class="head">
+          <h2>Continue watching</h2>
+          <button class="jump" onclick="kbar(true)"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.500-4.500"/></svg><span>Jump to anything</span><kbd>Ctrl K</kbd></button>
+        </div>
+        <div class="continue" id="feature"></div>
+        <div class="rows" id="others"></div>
+      </section>
+      <section>
+        <div class="head"><h2>Library</h2><span class="small">4 series, 172 episodes. Drop files anywhere to add them.</span></div>
+        <div class="gallery" id="gallery"></div>
+      </section>
+    </div></div>
+
+    <!-- Series: detail pattern -->
+    <div class="view" id="series">
+      <div class="series-top">
+        <div class="info">
+          <button class="back" onclick="go('home')"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>Home</button>
+          <h1 id="sTitle"></h1>
+          <p class="small" id="sMeta"></p>
+          <div class="actions">
+            <button class="btn primary" onclick="play()"><svg class="i solid" viewBox="0 0 24 24"><path d="M7 4.500v15l13-7.500z"/></svg><span id="sPlay"></span></button>
+            <button class="btn quiet">Edit series</button>
+          </div>
+        </div>
+        <div class="shot"><img id="sImg" alt=""></div>
+      </div>
+      <div class="page">
+        <div class="tabs" role="tablist" id="sTabs"></div>
+        <div class="eps" id="sEps"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Player: full-bleed media -->
+<div id="player" hidden>
+  <img id="pImg" alt="">
+  <div class="sub">You wanted this job so bad you're willing to lie.</div>
+  <div class="chrome" id="chrome">
+    <div class="top bar">
+      <button class="icon-btn" title="Back (Esc)" onclick="stop()"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div><h3 id="pTitle"></h3><div class="small" id="pEp"></div></div>
+    </div>
+    <div class="bottom bar">
+      <div class="scrub" id="scrub">
+        <div class="track"><div class="fill" style="width:54%"></div><i class="chap" style="left:6%"></i><i class="chap" style="left:47%"></i><i class="chap" style="left:91%"></i></div>
+        <div class="peek" id="peek"><img id="peekImg" alt=""><span class="num" id="peekT">23:41</span></div>
+      </div>
+      <div class="ctl">
+        <button class="icon-btn" title="Pause (Space)"><svg class="i" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button class="icon-btn" title="Back 10 seconds (Left)"><svg class="i" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.200M4 4v4h4"/></svg></button>
+        <button class="icon-btn" title="Forward 10 seconds (Right)"><svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3-6.200M20 4v4h-4"/></svg></button>
+        <button class="icon-btn" title="Volume (Up / Down)"><svg class="i" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10zM17 9v6"/></svg></button>
+        <span class="time num">23:41 / 43:52</span>
+        <span class="gap"></span>
+        <button class="icon-btn" title="Next episode (N)" onclick="toggle('next')"><svg class="i" viewBox="0 0 24 24"><path d="M6 5l10 7-10 7zM19 5v14"/></svg></button>
+        <button class="icon-btn" title="Episodes (E)" onclick="toggle('side')"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <button class="icon-btn" title="Audio and subtitles (S)" onclick="toggle('pop')"><svg class="i" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM7 14h4M13 14h4M7 10h2"/></svg></button>
+        <button class="icon-btn" title="Speed"><svg class="i" viewBox="0 0 24 24"><path d="M5 17a8 8 0 1 1 14 0M12 13l4-5"/></svg></button>
+        <button class="icon-btn" title="Fullscreen (F)"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+    </div>
+    <div class="pop" id="pop">
+      <h4>Audio</h4>
+      <button aria-checked="true"><span>English</span><span class="meta">AAC 5.1</span></button>
+      <h4>Subtitles</h4>
+      <button><span>Off</span></button>
+      <button aria-checked="true"><span>English</span><span class="meta">SRT</span></button>
+      <button><span>English, hearing impaired</span><span class="meta">SRT</span></button>
+      <button><span>Add subtitle file</span></button>
+      <h4>Timing and size</h4>
+      <button><span>Delay</span><span class="meta num">0.0 s</span></button>
+      <button><span>Size</span><span class="meta num">100%</span></button>
+    </div>
+    <div class="next" id="next">
+      <div class="thumb"><img id="nImg" alt=""></div>
+      <div class="txt"><div><div class="meta">Next episode in 8 s</div><div style="font-weight:500" id="nTitle"></div></div><button class="btn">Play now</button></div>
+    </div>
+    <aside class="side" id="side" aria-label="Episodes">
+      <header><h3 style="font-size:var(--text-body)" id="sideTitle"></h3><button class="icon-btn" title="Close episodes (E)" onclick="toggle('side')"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+      <div class="list" id="sideList"></div>
+    </aside>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" onclick="if(event.target===this)kbar(false)">
+  <div class="kbar" role="dialog" aria-label="Jump to">
+    <label class="kq" for="kq"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.500-4.500"/></svg><span>Jump to</span><input id="kq" placeholder="suits" autocomplete="off" oninput="kfill()"></label>
+    <ul id="kl"></ul>
+  </div>
+</div>
+
+<script>
+// Your real library, with frames grabbed from the files themselves.
+const suitsS1 = ['Pilot', 'Errors and Omissions', 'Inside Track', 'Dirty Little Secrets', 'Bail Out', 'Tricks of the Trade', 'Play the Man', 'Identity Crisis', 'Undefeated', 'Shelf Life', 'Rules of the Game', 'Dog Fight'];
+const lib = [
+  { t: 'Suits', img: 'suits', unit: 'Season', seasons: [12, 16, 16, 16, 16, 16, 16, 16, 10], at: [1, 5, .54], epT: 'Bail Out', mins: 43,
+    ep: (s, e) => s === 1 ? { t: suitsS1[e - 1], img: 'suits-e' + String(e).padStart(2, '0') } : null },
+  { t: 'WandaVision', img: 'wanda', unit: 'Season', seasons: [9], at: [1, 5, .31], epT: 'On a Very Special Episode...', mins: 41, ep: (s, e) => e === 5 ? { img: 'wanda-e05' } : null },
+  { t: 'VisionQuest', img: 'vision', unit: 'Season', seasons: [8], at: [1, 3, .12], epT: 'Episode 3', mins: 47, ep: (s, e) => e === 3 ? { img: 'vision-e03' } : null },
+  { t: 'IP Networks Course', img: 'course', unit: 'Section', seasons: [3, 3, 1, 1, 1, 4], at: [1, 1, 0], mins: 12, ep: () => null },
+];
+const src = n => `frames/${n}.jpg`;
+const total = s => s.seasons.reduce((a, b) => a + b, 0);
+const seen = s => s.seasons.slice(0, s.at[0] - 1).reduce((a, b) => a + b, 0) + s.at[1] - 1;
+const label = s => (seen(s) || s.at[2] ? 'Resume' : 'Play') + ` S${s.at[0]} E${s.at[1]}`;
+const epOf = (s, sn, e) => ({ t: 'Episode ' + e, img: s.img, ...(s.ep(sn, e) || {}) });
+const left = s => Math.round((1 - s.at[2]) * s.mins) + ' min left';
+const $ = id => document.getElementById(id);
+const playIcon = '<svg class="i solid" viewBox="0 0 24 24"><path d="M7 4.500v15l13-7.500z"/></svg>';
+let cur = lib[0];
+
+// ---- home ----
+const inProgress = lib.filter(s => s.at[2]);
+{ const s = inProgress[0], e = epOf(s, s.at[0], s.at[1]);
+  $('feature').innerHTML = `
+    <div class="shot"><img src="${src(e.img)}" alt=""></div>
+    <div class="info">
+      <div class="small">${s.t}, season ${s.at[0]} episode ${s.at[1]}</div>
+      <h1>${s.epT}</h1>
+      <div class="progress"><i style="width:${s.at[2] * 100}%"></i></div>
+      <div class="small num">${left(s)}</div>
+      <div class="actions"><button class="btn primary" onclick="cur=lib[0];play()">${playIcon}Resume</button><button class="btn quiet" onclick="cur=lib[0];openSeries()">Open series</button></div>
+    </div>`; }
+$('others').innerHTML = inProgress.slice(1).map(s => { const e = epOf(s, s.at[0], s.at[1]); return `
+  <button class="row" onclick="cur=lib[${lib.indexOf(s)}];play()">
+    <span class="thumb"><img src="${src(e.img)}" alt=""></span>
+    <span><span class="title">${s.t}</span><br><span class="small">Season ${s.at[0]}, episode ${s.at[1]}: ${s.epT}</span></span>
+    <span class="end"><span class="progress"><i style="width:${s.at[2] * 100}%"></i></span><span class="num">${left(s)}</span></span>
+  </button>`; }).join('');
+
+// ---- library gallery ----
+const gal = $('gallery');
+gal.innerHTML = lib.map((s, i) => `
+  <div class="panel" data-i="${i}" tabindex="0" role="button" aria-label="${s.t}">
+    <div class="shot"><img src="${src(s.img)}" alt=""></div><div class="dim"></div>
+    <div class="spine"><span>${s.t}</span></div>
+    <div class="count num">${seen(s)}/${total(s)}</div>
+    <div class="cap">
+      <div><h3>${s.t}</h3><div class="small">${s.seasons.length} ${s.unit.toLowerCase()}${s.seasons.length > 1 ? 's' : ''}, ${seen(s)} of ${total(s)} watched</div></div>
+      <div class="actions"><button class="btn primary" data-play>${playIcon}${label(s)}</button><button class="btn quiet" data-open>Open series</button></div>
+    </div>
+  </div>`).join('') + '<button class="panel add"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="meta">Add files</span></button>';
+const panels = [...gal.children];
+let openIdx = 0, hoverT;
+function layout() {
+  const closed = innerWidth < 900 ? 56 : 96, n = panels.length - 1;
+  const open = Math.max(closed, gal.clientWidth - closed * n);   // n = closed panels + the add tile
+  gal.style.setProperty('--closed', closed + 'px');
+  gal.style.setProperty('--open', open + 'px');
+  gal.style.setProperty('--drift', -(open - closed) / 2 + 'px');
+  panels.forEach((p, i) => {
+    p.classList.toggle('on', i === openIdx);
+    p.style.transform = `translateX(${i * closed + (i > openIdx ? open - closed : 0)}px)`;
+  });
+}
+function openPanel(i) { if (i === openIdx || i >= panels.length - 1) return; openIdx = i; layout(); }
+gal.addEventListener('pointerover', e => {
+  const p = e.target.closest('.panel[data-i]'); if (!p) return;
+  clearTimeout(hoverT); hoverT = setTimeout(() => openPanel(+p.dataset.i), 70);   // skip panels the pointer only crosses
+});
+gal.addEventListener('pointerleave', () => clearTimeout(hoverT));
+gal.addEventListener('focusin', e => { const p = e.target.closest('.panel[data-i]'); if (p) openPanel(+p.dataset.i); });
+gal.addEventListener('keydown', e => {
+  const p = e.target; if (!p.classList.contains('panel')) return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.click(); }
+  const to = e.key === 'ArrowRight' ? p.nextElementSibling : e.key === 'ArrowLeft' ? p.previousElementSibling : null;
+  if (to) { e.preventDefault(); to.focus(); }
+});
+gal.addEventListener('click', e => {
+  const p = e.target.closest('.panel[data-i]'); if (!p) return;
+  cur = lib[p.dataset.i];
+  if (e.target.closest('[data-play]')) play(); else openSeries();
+});
+addEventListener('resize', layout);
+gal.style.visibility = 'hidden';
+requestAnimationFrame(() => { panels.forEach(p => p.style.transition = 'none'); layout(); gal.offsetWidth; panels.forEach(p => p.style.transition = ''); gal.style.visibility = ''; });
+
+// ---- series ----
+function go(v) { document.querySelectorAll('.view').forEach(x => x.classList.toggle('on', x.id === v)); document.querySelector('main').scrollTop = 0; if (v === 'home') layout(); }
+function rows(s, sn, compact) {
+  return Array.from({ length: s.seasons[sn - 1] }, (_, k) => {
+    const e = k + 1, ep = epOf(s, sn, e), mins = s.mins + (k * 7) % 5 - 2;
+    const done = sn < s.at[0] || (sn === s.at[0] && e < s.at[1]), now = sn === s.at[0] && e === s.at[1], part = now && s.at[2];
+    return `<button class="row ${now ? 'now' : ''}" onclick="play(${sn}, ${e})">
+      <span class="n num">${e}</span>
+      <span class="thumb"><img src="${src(ep.img)}" alt="" loading="lazy"></span>
+      <span><span class="title">${ep.t}</span><br><span class="small num">${part ? left(s) : mins + ' min'}${done ? ', watched' : ''}</span></span>
+      ${compact ? '' : `<span class="end">${part ? `<span class="progress"><i style="width:${s.at[2] * 100}%"></i></span>` : ''}${done ? '<svg class="i" viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg>' : ''}</span>`}
+    </button>`; }).join('');
+}
+function openSeries(season) {
+  const s = cur, sn = season || s.at[0];
+  $('sImg').src = src(s.img);
+  $('sTitle').textContent = s.t;
+  $('sMeta').textContent = `${s.seasons.length} ${s.unit.toLowerCase()}${s.seasons.length > 1 ? 's' : ''}, ${total(s)} episodes, ${seen(s)} watched`;
+  $('sPlay').textContent = label(s);
+  $('sTabs').innerHTML = s.seasons.map((_, a) => `<button role="tab" aria-selected="${a + 1 === sn}" onclick="openSeries(${a + 1})">${s.unit} ${a + 1}</button>`).join('');
+  $('sEps').innerHTML = rows(s, sn);
+  if (!season) go('series');
+}
+
+// ---- player ----
+let idleT;
+function play(sn, e) {
+  const s = cur; sn = sn || s.at[0]; e = e || s.at[1];
+  const ep = epOf(s, sn, e), nx = epOf(s, sn, e + 1);
+  $('pImg').src = $('peekImg').src = src(ep.img); $('nImg').src = src(nx.img);
+  $('pTitle').textContent = ep.t; $('pEp').textContent = `${s.t}, ${s.unit.toLowerCase()} ${sn} episode ${e}`;
+  $('nTitle').textContent = nx.t;
+  $('sideTitle').textContent = `${s.unit} ${sn}`; $('sideList').innerHTML = rows(s, sn, true);
+  $('side').classList.remove('on'); $('player').hidden = false; wake();
+}
+function stop() { $('player').hidden = true; ['pop', 'next', 'side'].forEach(id => $(id).classList.remove('on')); }
+function toggle(id) { $(id).classList.toggle('on'); wake(); }
+function wake() {
+  $('chrome').classList.remove('idle'); clearTimeout(idleT);
+  idleT = setTimeout(() => { if (!document.querySelector('.pop.on, .side.on')) $('chrome').classList.add('idle'); }, 2600);
+}
+$('player').addEventListener('mousemove', wake);
+$('scrub').addEventListener('mousemove', e => {
+  const r = $('scrub').getBoundingClientRect(), p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), t = Math.round(p * 2632);
+  $('peek').style.left = Math.min(r.width - 96, Math.max(96, e.clientX - r.left)) + 'px';
+  $('peekT').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+});
+
+// ---- command bar ----
+let kOpener;
+function kbar(on) {
+  $('scrim').classList.toggle('on', on);
+  if (on) { kOpener = document.activeElement; $('kq').value = ''; kfill(); $('kq').focus(); }
+  else if (kOpener) kOpener.focus();
+}
+function kfill() {
+  const q = $('kq').value.toLowerCase();
+  const r = lib.filter(s => s.t.toLowerCase().includes(q)).map(s => [s.t, label(s), lib.indexOf(s)]);
+  if ('add files'.includes(q)) r.push(['Add files', 'Action', -1]);
+  $('kl').innerHTML = r.map((x, i) => `<li class="${i ? '' : 'sel'}" data-i="${x[2]}"><span>${x[0]}</span><span>${x[1]}</span></li>`).join('')
+    || '<li><span>No series or action matches that.</span><button class="clear" onclick="$(\'kq\').value=\'\';kfill();$(\'kq\').focus()">Clear search</button></li>';
+}
+$('kl').addEventListener('click', e => { const li = e.target.closest('li'); if (li && li.dataset.i >= 0) { cur = lib[li.dataset.i]; kbar(false); openSeries(); } });
+document.querySelectorAll('button[title]').forEach(b => { b.dataset.tip = b.title; b.setAttribute('aria-label', b.title.replace(/ \(.*\)$/, '')); b.removeAttribute('title'); });
+addEventListener('keydown', e => {
+  const k = $('scrim').classList.contains('on'), playing = !$('player').hidden;
+  if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); kbar(true); }
+  else if (e.key === 'Escape') { if (k) kbar(false); else if (playing) stop(); }
+  else if (e.key === 'Tab' && k) { e.preventDefault(); $('kq').focus(); }
+  else if (e.key === 'Enter' && k) { const li = document.querySelector('#kl li.sel'); if (li) li.click(); }
+  else if (e.key.toLowerCase() === 'e' && !k && playing) toggle('side');
+});
+</script>
+</body>
+</html>

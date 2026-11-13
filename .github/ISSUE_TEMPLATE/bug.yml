@@ -1,0 +1,29 @@
+name: Bug report
+description: Something does not work, or a file does not play properly.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Marquee version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and graphics card
+      placeholder: "Windows 11 24H2, RTX 4060"
+  - type: textarea
+    id: file
+    attributes:
+      label: About the file (playback problems only)
+      description: Press I while it plays and copy the stats overlay. Add the container, and the subtitle type if subtitles are involved.
+      placeholder: "3840x2160 hevc, Decoder: GPU (d3d11va), Dropped frames: 212, MKV, PGS subtitles"

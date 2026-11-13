@@ -1,0 +1,27 @@
+name: A file name was sorted wrong
+description: Marquee put a file in the wrong series, season or episode, or did not recognise it.
+labels: ["organiser"]
+body:
+  - type: textarea
+    id: names
+    attributes:
+      label: File names
+      description: The full path from the folder you added, one per line. Include the folder names; they matter.
+      placeholder: 'Show Name\Season 2\Show.Name.S02E01.1080p.WEB-DL.x265.mkv'
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: got
+    attributes:
+      label: What Marquee proposed
+      placeholder: 'Series "Show Name 1080p", season 1, episode 2'
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should have been
+      placeholder: 'Series "Show Name", season 2, episode 1'
+    validations:
+      required: true

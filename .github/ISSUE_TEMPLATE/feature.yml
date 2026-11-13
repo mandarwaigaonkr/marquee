@@ -1,0 +1,21 @@
+name: Feature request
+description: Something Marquee should do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not only the feature. "I keep two versions of some episodes and want to choose one" says more than "add versions".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How you imagine it working
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you work on it?
+      options:
+        - label: I would like to open a pull request for this
