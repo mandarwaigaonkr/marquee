@@ -12,7 +12,7 @@ Get-FileHash .\Marquee_0.1.0_x64-setup.exe -Algorithm SHA256
 
 ## The plan
 
-1. Apply to [SignPath Foundation](https://signpath.org), which signs open-source projects free of charge. It needs a public repository, releases built by CI from this repository, and a published signing policy (this page becomes it).
+1. Apply to [SignPath Foundation](https://signpath.org), which signs open-source projects free of charge. It needs a public repository, releases built by CI from this repository, and a published signing policy (this page becomes it). The first two are in place: `.github/workflows/build.yml` builds the installer from a tag.
 2. Offer Marquee through `winget`.
 3. Consider a Microsoft Store listing, where the Store signs the package.
 

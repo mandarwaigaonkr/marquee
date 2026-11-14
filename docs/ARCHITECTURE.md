@@ -96,6 +96,10 @@ Player shortcuts: Space or K play/pause, Left/Right 10 s, Up/Down volume, F full
 
 `npm run tauri build -- --bundles nsis` writes `src-tauri/target/release/bundle/nsis/Marquee_<version>_x64-setup.exe`. `libmpv-2.dll` is bundled as a resource and lands beside the executable. The build is unsigned, so Windows SmartScreen warns on first run.
 
+## Automated build
+
+`.github/workflows/build.yml` runs on every push and pull request: it fetches the official libmpv archive (checksum pinned), makes the MSVC import library, type-checks, runs the Rust tests and builds the installer, which is kept as a run artifact. Pushing a tag `vX.Y.Z` also attaches the installer and its checksum to a draft release. Third-party actions are pinned to commit ids.
+
 ## Building libmpv for MSVC
 
 The official mpv Windows development archive ships a MinGW import library only.

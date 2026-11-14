@@ -4,6 +4,8 @@
 
 No account, no server, no internet. Windows 11, free, open source.
 
+[![Build](https://github.com/mandarwaigaonkr/marquee/actions/workflows/build.yml/badge.svg)](https://github.com/mandarwaigaonkr/marquee/actions/workflows/build.yml)
+
 ![The Marquee home screen: Continue watching and the Library gallery](docs/screenshots/home.png)
 
 ## The problem
