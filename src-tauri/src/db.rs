@@ -51,6 +51,58 @@ CREATE TABLE watch_folders (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);
 CREATE TABLE removed_paths (path TEXT PRIMARY KEY);
 ";
 
+/// Where a special plays in watch order, TheTVDB's "airs after": after the last episode of
+/// `after_season` numbered `after_number` or less (0 = before the season starts, NULL = after
+/// its end). NULL `after_season` leaves it at the end, after every numbered season.
+const SCHEMA_V3: &str = "
+ALTER TABLE episodes ADD COLUMN after_season INTEGER;
+ALTER TABLE episodes ADD COLUMN after_number INTEGER;
+";
+
+/// One episode as watch order sees it.
+pub struct OrderEntry {
+    pub season: i64,
+    pub number: i64,
+    /// For a special: (season, episode number it follows; 0 before the season, None after it).
+    pub after: Option<(i64, Option<i64>)>,
+}
+
+/// The order a series is watched in, as indexes into `entries`, which come in display order
+/// (numbered seasons, then specials; each by number). A placed special goes right after the
+/// episode it follows; one placed in a season that isn't there, or not placed, goes at the end.
+pub fn watch_order(entries: &[OrderEntry]) -> Vec<usize> {
+    let numbered: Vec<usize> = (0..entries.len()).filter(|&i| entries[i].season != 0).collect();
+    // Slot k means "just before numbered[k]"; numbered.len() is after everything. The flag
+    // marks a special that opens a season, so it follows one that closes the season before.
+    let slot = |season: i64, number: Option<i64>| -> Option<(usize, bool)> {
+        let in_season: Vec<usize> = (0..numbered.len()).filter(|&k| entries[numbered[k]].season == season).collect();
+        let (first, last) = (*in_season.first()?, *in_season.last()?);
+        Some(match number {
+            None => (last + 1, false),
+            Some(n) => in_season.iter().rev().find(|&&k| entries[numbered[k]].number <= n).map_or((first, true), |&k| (k + 1, false)),
+        })
+    };
+    let mut placed: Vec<Vec<(bool, usize)>> = vec![Vec::new(); numbered.len() + 1];
+    let mut unplaced = Vec::new();
+    for i in (0..entries.len()).filter(|&i| entries[i].season == 0) {
+        match entries[i].after.and_then(|(s, n)| slot(s, n)) {
+            Some((k, opens)) => placed[k].push((opens, i)),
+            None => unplaced.push(i),
+        }
+    }
+    for specials in &mut placed {
+        specials.sort_by_key(|(opens, _)| *opens);
+    }
+    let placed: Vec<Vec<usize>> = placed.into_iter().map(|s| s.into_iter().map(|(_, i)| i).collect()).collect();
+    let mut order = Vec::with_capacity(entries.len());
+    for (k, specials) in placed.into_iter().enumerate() {
+        order.extend(specials);
+        order.extend(numbered.get(k));
+    }
+    order.extend(unplaced);
+    order
+}
+
 /// An item counts as watched at 92%, or when under two minutes remain (the credits).
 /// The two-minute rule is for full-length episodes only: without the length check a
 /// ninety-second clip would be "watched" the moment it starts.
@@ -151,6 +203,9 @@ pub struct Episode {
     pub position_ms: i64,
     pub watched: bool,
     pub last_played_at: Option<i64>,
+    /// For a special: where it plays (see SCHEMA_V3).
+    pub after_season: Option<i64>,
+    pub after_number: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -168,6 +223,8 @@ pub struct Series {
     pub seasons: Vec<Season>,
     /// Episode the Play button starts.
     pub resume_episode_id: Option<i64>,
+    /// Every episode id in the order it is watched, with placed specials in their spots.
+    pub watch_order: Vec<i64>,
 }
 
 #[derive(Serialize)]
@@ -223,6 +280,9 @@ impl Db {
         }
         if version < 2 {
             conn.execute_batch(&format!("BEGIN;{SCHEMA_V2}PRAGMA user_version = 2;COMMIT;")).map_err(err)?;
+        }
+        if version < 3 {
+            conn.execute_batch(&format!("BEGIN;{SCHEMA_V3}PRAGMA user_version = 3;COMMIT;")).map_err(err)?;
         }
         // Files whose thumbnail failed last time (drive unplugged, say) get another go each launch.
         conn.execute("UPDATE media_files SET thumb_state = 0 WHERE thumb_state = 2", []).map_err(err)?;
@@ -311,9 +371,16 @@ impl Db {
             if item.kind == "episode" && !item.series.trim().is_empty() {
                 let series_id = Self::series_id(&tx, item.series.trim())?;
                 let season_id = Self::season_id(&tx, series_id, item.season, item.season_title.as_deref())?;
+                let (number, after_season) = if item.season == 0 {
+                    // Specials come from many sources ("OVA 1", "SP1"), so one that would share a
+                    // number with a special already there takes the next free one.
+                    (Self::free_special_number(&tx, season_id, item.episode)?, item.after_season)
+                } else {
+                    (item.episode, None)
+                };
                 tx.execute(
-                    "INSERT INTO episodes (season_id, number, number_end, title, media_file_id) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![season_id, item.episode, item.episode_end, item.title, media_id],
+                    "INSERT INTO episodes (season_id, number, number_end, title, media_file_id, after_season) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![season_id, number, item.episode_end, item.title, media_id, after_season],
                 )
                 .map_err(err)?;
             } else {
@@ -325,13 +392,25 @@ impl Db {
         Ok(added)
     }
 
+    /// `wanted` if no episode in the season has it (and it is above 0), else the next number up.
+    fn free_special_number(conn: &Connection, season_id: i64, wanted: i64) -> Res<i64> {
+        let taken: bool = conn
+            .query_row("SELECT EXISTS(SELECT 1 FROM episodes WHERE season_id = ?1 AND number = ?2)", params![season_id, wanted], |r| r.get(0))
+            .map_err(err)?;
+        if wanted > 0 && !taken {
+            return Ok(wanted);
+        }
+        conn.query_row("SELECT COALESCE(MAX(number), 0) + 1 FROM episodes WHERE season_id = ?1", [season_id], |r| r.get(0)).map_err(err)
+    }
+
     pub fn library(&self) -> Res<Library> {
         let conn = self.conn.lock().unwrap();
         let mut episodes: HashMap<i64, Vec<Episode>> = HashMap::new();
         let mut stmt = conn
             .prepare(
                 "SELECT e.id, e.season_id, s.number, e.number, e.number_end, e.title, m.id, m.path, m.thumb_state,
-                        m.duration_ms, COALESCE(p.position_ms, 0), COALESCE(p.watched, 0), p.last_played_at
+                        m.duration_ms, COALESCE(p.position_ms, 0), COALESCE(p.watched, 0), p.last_played_at,
+                        e.after_season, e.after_number
                  FROM episodes e JOIN seasons s ON s.id = e.season_id JOIN media_files m ON m.id = e.media_file_id
                  LEFT JOIN playback p ON p.media_file_id = m.id ORDER BY e.number, e.id",
             )
@@ -353,6 +432,8 @@ impl Db {
                         position_ms: r.get(10)?,
                         watched: r.get::<_, i64>(11)? == 1,
                         last_played_at: r.get(12)?,
+                        after_season: r.get(13)?,
+                        after_number: r.get(14)?,
                     },
                 ))
             })
@@ -379,13 +460,19 @@ impl Db {
             .map(|row| {
                 let (id, title) = row.map_err(err)?;
                 let seasons = seasons.remove(&id).unwrap_or_default();
-                let ordered: Vec<&Episode> = seasons.iter().flat_map(|s| &s.episodes).collect();
+                let shown: Vec<&Episode> = seasons.iter().flat_map(|s| &s.episodes).collect();
+                let entries: Vec<OrderEntry> = shown
+                    .iter()
+                    .map(|e| OrderEntry { season: e.season_number, number: e.number, after: e.after_season.map(|s| (s, e.after_number)) })
+                    .collect();
+                let ordered: Vec<&Episode> = watch_order(&entries).into_iter().map(|i| shown[i]).collect();
                 let progress: Vec<EpisodeProgress> = ordered
                     .iter()
                     .map(|e| EpisodeProgress { watched: e.watched, position_ms: e.position_ms, last_played_at: e.last_played_at })
                     .collect();
                 let resume_episode_id = pick_resume(&progress).map(|i| ordered[i].id);
-                Ok(Series { id, title, seasons, resume_episode_id })
+                let watch_order = ordered.iter().map(|e| e.id).collect();
+                Ok(Series { id, title, seasons, resume_episode_id, watch_order })
             })
             .collect::<Res<Vec<_>>>()?;
 
@@ -510,19 +597,52 @@ impl Db {
     }
 
     /// Moves an episode to another season of the same series, creating it if needed,
-    /// and optionally renumbers it.
+    /// and optionally renumbers it. An episode moved into Specials keeps its spot in watch
+    /// order and takes the next free special number; one moved out loses its placement.
     pub fn move_episode(&self, episode_id: i64, season_number: i64, number: Option<i64>) -> Res<()> {
-        let conn = self.conn.lock().unwrap();
-        let series_id: i64 = conn
-            .query_row("SELECT s.series_id FROM episodes e JOIN seasons s ON s.id = e.season_id WHERE e.id = ?1", [episode_id], |r| r.get(0))
+        if season_number < 0 || number.is_some_and(|n| n < 0) {
+            return Err("Season and episode numbers can't be negative. Use 0 for Specials.".into());
+        }
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction().map_err(err)?;
+        let (series_id, from_season, from_number, after_season, after_number): (i64, i64, i64, Option<i64>, Option<i64>) = tx
+            .query_row(
+                "SELECT s.series_id, s.number, e.number, e.after_season, e.after_number FROM episodes e JOIN seasons s ON s.id = e.season_id WHERE e.id = ?1",
+                [episode_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
             .map_err(err)?;
-        let season_id = Self::season_id(&conn, series_id, season_number, None)?;
-        conn.execute(
-            "UPDATE episodes SET season_id = ?2, number = COALESCE(?3, number) WHERE id = ?1",
-            params![episode_id, season_id, number],
+        let season_id = Self::season_id(&tx, series_id, season_number, None)?;
+        let (number, after_season, after_number) = match (from_season, season_number) {
+            (0, 0) => (number.unwrap_or(from_number), after_season, after_number),
+            (_, 0) => (number.map_or_else(|| Self::free_special_number(&tx, season_id, 0), Ok)?, Some(from_season), Some(from_number)),
+            _ => (number.unwrap_or(from_number), None, None),
+        };
+        tx.execute(
+            "UPDATE episodes SET season_id = ?2, number = ?3, after_season = ?4, after_number = ?5 WHERE id = ?1",
+            params![episode_id, season_id, number, after_season, after_number],
         )
-        .map(|_| ())
-        .map_err(err)
+        .map_err(err)?;
+        tx.commit().map_err(err)
+    }
+
+    /// Sets where a special plays: after episode `after_number` of `after_season` (0 = before
+    /// the season, None = after its last episode), or at the end when `after_season` is None.
+    pub fn place_special(&self, episode_id: i64, after_season: Option<i64>, after_number: Option<i64>) -> Res<()> {
+        let conn = self.conn.lock().unwrap();
+        let season: i64 = conn
+            .query_row("SELECT s.number FROM episodes e JOIN seasons s ON s.id = e.season_id WHERE e.id = ?1", [episode_id], |r| r.get(0))
+            .map_err(err)?;
+        if season != 0 {
+            return Err("Only specials can be placed between episodes. Move it to Specials first.".into());
+        }
+        if after_season == Some(0) {
+            return Err("A special can't be placed among the specials. Pick a numbered season.".into());
+        }
+        let after_number = after_season.and(after_number);
+        conn.execute("UPDATE episodes SET after_season = ?2, after_number = ?3 WHERE id = ?1", params![episode_id, after_season, after_number])
+            .map(|_| ())
+            .map_err(err)
     }
 
 
@@ -680,7 +800,7 @@ mod tests {
     fn proposed(path: &str, series: &str, season: i64, episode: i64) -> Proposed {
         Proposed {
             path: path.into(), kind: "episode".into(), series: series.into(), season, season_title: None,
-            episode, episode_end: None, title: format!("Episode {episode}"), year: None, include: true,
+            episode, episode_end: None, title: format!("Episode {episode}"), year: None, include: true, after_season: None,
         }
     }
 
@@ -913,6 +1033,115 @@ mod tests {
         assert_eq!(db.library().unwrap().series[0].seasons[1].episodes.len(), 0);
         db.remove("series", lib.series[0].id).unwrap();
         assert!(db.library().unwrap().series.is_empty());
+    }
+
+    fn entry(season: i64, number: i64, after: Option<(i64, Option<i64>)>) -> OrderEntry {
+        OrderEntry { season, number, after }
+    }
+
+    #[test]
+    fn unplaced_specials_are_watched_last() {
+        let entries = [entry(1, 1, None), entry(1, 2, None), entry(0, 1, None)];
+        assert_eq!(watch_order(&entries), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn a_placed_special_plays_right_after_its_episode() {
+        // S1 E1, S1 E2, S2 E1, then a special that airs after S1 E1.
+        let entries = [entry(1, 1, None), entry(1, 2, None), entry(2, 1, None), entry(0, 1, Some((1, Some(1))))];
+        assert_eq!(watch_order(&entries), vec![0, 3, 1, 2]);
+    }
+
+    #[test]
+    fn a_special_can_open_a_season_or_close_it() {
+        let entries = [entry(1, 1, None), entry(2, 1, None), entry(2, 2, None), entry(0, 1, Some((2, Some(0)))), entry(0, 2, Some((1, None)))];
+        assert_eq!(watch_order(&entries), vec![0, 4, 3, 1, 2], "the one closing S1 plays before the one opening S2");
+    }
+
+    #[test]
+    fn a_special_after_a_missing_episode_follows_the_last_one_before_the_gap() {
+        let entries = [entry(1, 1, None), entry(1, 4, None), entry(0, 1, Some((1, Some(3))))];
+        assert_eq!(watch_order(&entries), vec![0, 2, 1]);
+    }
+
+    #[test]
+    fn a_special_placed_in_a_season_that_is_gone_goes_last() {
+        let entries = [entry(1, 1, None), entry(0, 1, Some((5, None)))];
+        assert_eq!(watch_order(&entries), vec![0, 1]);
+    }
+
+    #[test]
+    fn play_and_next_follow_the_placed_special() {
+        let db = memory_db();
+        let mut ova = proposed("a/ova.mkv", "Mushoku", 0, 1);
+        ova.after_season = Some(1);
+        db.import(&[proposed("a/1.mkv", "Mushoku", 1, 1), proposed("a/2.mkv", "Mushoku", 2, 1), ova]).unwrap();
+        let lib = db.library().unwrap();
+        let ids = |season: usize| lib.series[0].seasons[season].episodes[0].id;
+        assert_eq!(lib.series[0].watch_order, vec![ids(0), ids(2), ids(1)], "the OVA plays between the seasons");
+        db.save_progress(lib.series[0].seasons[0].episodes[0].media_file_id, 3_590_000, 3_600_000).unwrap();
+        assert_eq!(db.library().unwrap().series[0].resume_episode_id, Some(ids(2)), "after S1 comes the OVA, not S2");
+    }
+
+    #[test]
+    fn moving_an_episode_into_specials_keeps_its_place_in_watch_order() {
+        let db = memory_db();
+        db.import(&[proposed("a/1.mkv", "Dark", 1, 1), proposed("a/2.mkv", "Dark", 1, 2), proposed("a/3.mkv", "Dark", 1, 3)]).unwrap();
+        let before = db.library().unwrap().series[0].watch_order.clone();
+        db.move_episode(before[1], 0, None).unwrap();
+        let lib = db.library().unwrap();
+        assert_eq!(lib.series[0].watch_order, before, "the recap still plays second");
+        let moved = &lib.series[0].seasons[1].episodes[0];
+        assert_eq!((moved.season_number, moved.number, moved.after_season, moved.after_number), (0, 1, Some(1), Some(2)));
+        db.move_episode(moved.id, 1, Some(2)).unwrap();
+        let back = db.library().unwrap().series[0].seasons[0].episodes[1].clone();
+        assert_eq!((back.id, back.after_season, back.after_number), (moved.id, None, None), "moved back, placement is dropped");
+    }
+
+    #[test]
+    fn placing_a_special_by_hand_and_sending_it_back_to_the_end() {
+        let db = memory_db();
+        db.import(&[proposed("a/1.mkv", "Dark", 1, 1), proposed("a/2.mkv", "Dark", 1, 2), proposed("a/sp.mkv", "Dark", 0, 1)]).unwrap();
+        let lib = db.library().unwrap();
+        let (e1, e2, sp) = (lib.series[0].seasons[0].episodes[0].id, lib.series[0].seasons[0].episodes[1].id, lib.series[0].seasons[1].episodes[0].id);
+        db.place_special(sp, Some(1), Some(0)).unwrap();
+        assert_eq!(db.library().unwrap().series[0].watch_order, vec![sp, e1, e2]);
+        db.place_special(sp, None, Some(4)).unwrap();
+        let after = db.library().unwrap();
+        assert_eq!(after.series[0].watch_order, vec![e1, e2, sp]);
+        assert_eq!(after.series[0].seasons[1].episodes[0].after_number, None, "no season means no episode either");
+    }
+
+    #[test]
+    fn only_specials_can_be_placed() {
+        let db = memory_db();
+        db.import(&[proposed("a/1.mkv", "Dark", 1, 1), proposed("a/sp.mkv", "Dark", 0, 1)]).unwrap();
+        let lib = db.library().unwrap();
+        let (e1, sp) = (lib.series[0].seasons[0].episodes[0].id, lib.series[0].seasons[1].episodes[0].id);
+        assert_eq!(db.place_special(e1, Some(1), None), Err("Only specials can be placed between episodes. Move it to Specials first.".into()));
+        assert_eq!(db.place_special(sp, Some(0), None), Err("A special can't be placed among the specials. Pick a numbered season.".into()));
+        assert!(db.move_episode(e1, -1, None).is_err());
+    }
+
+    #[test]
+    fn a_special_that_would_share_a_number_takes_the_next_free_one() {
+        let db = memory_db();
+        db.import(&[proposed("a/ova1.mkv", "Frieren", 0, 1), proposed("a/ova2.mkv", "Frieren", 0, 2)]).unwrap();
+        db.import(&[proposed("b/sp1.mkv", "Frieren", 0, 1), proposed("b/1.mkv", "Frieren", 1, 1), proposed("b/1v2.mkv", "Frieren", 1, 1)]).unwrap();
+        let lib = db.library().unwrap();
+        let numbers = |n: i64| lib.series[0].seasons.iter().find(|s| s.number == n).unwrap().episodes.iter().map(|e| e.number).collect::<Vec<_>>();
+        assert_eq!(numbers(0), vec![1, 2, 3]);
+        assert_eq!(numbers(1), vec![1, 1], "numbered seasons keep the number the user gave");
+    }
+
+    #[test]
+    fn a_library_from_the_second_version_gains_special_placement() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!("{SCHEMA_V1}{SCHEMA_V2}PRAGMA user_version = 2;")).unwrap();
+        let db = Db::with_connection(conn, std::env::temp_dir().join("marquee-test-thumbs")).unwrap();
+        db.import(&[proposed("a/sp.mkv", "Dark", 0, 1)]).unwrap();
+        let version: i64 = db.conn.lock().unwrap().query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!((version, db.library().unwrap().series[0].seasons[0].episodes[0].after_season), (3, None));
     }
 
     #[test]

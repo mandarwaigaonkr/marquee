@@ -12,10 +12,11 @@ export type Playable = {
   watched: boolean;
   last_played_at: number | null;
 };
-export type Episode = Playable & { season_number: number; number: number; number_end: number | null };
+/** `after_season`/`after_number`: where a special plays (db.rs SCHEMA_V3). Number 0 is before the season, null after it. */
+export type Episode = Playable & { season_number: number; number: number; number_end: number | null; after_season: number | null; after_number: number | null };
 export type Movie = Playable & { year: number | null };
 export type Season = { id: number; number: number; title: string | null; episodes: Episode[] };
-export type Series = { id: number; title: string; seasons: Season[]; resume_episode_id: number | null };
+export type Series = { id: number; title: string; seasons: Season[]; resume_episode_id: number | null; watch_order: number[] };
 export type Library = { series: Series[]; movies: Movie[]; thumbs_dir: string };
 
 export type Proposed = {
@@ -29,6 +30,7 @@ export type Proposed = {
   title: string;
   year: number | null;
   include: boolean;
+  after_season: number | null;
 };
 
 export type Track = { id: number; kind: "audio" | "sub"; lang: string; title: string; codec: string; selected: boolean; external: boolean };
@@ -63,7 +65,9 @@ export const api = {
   remove: (kind: ItemKind, id: number) => invoke<void>("remove_item", { kind, id }),
   createSeries: (title: string) => invoke<number>("create_series", { title }),
   addSeason: (seriesId: number) => invoke<number>("add_season", { seriesId }),
-  moveEpisode: (episodeId: number, seasonNumber: number) => invoke<void>("move_episode", { episodeId, seasonNumber, number: null }),
+  moveEpisode: (episodeId: number, seasonNumber: number, number: number | null = null) => invoke<void>("move_episode", { episodeId, seasonNumber, number }),
+  /** Where a special plays: after episode `afterNumber` of `afterSeason` (0 before it, null after it); no season = at the end. */
+  placeSpecial: (episodeId: number, afterSeason: number | null, afterNumber: number | null) => invoke<void>("place_special", { episodeId, afterSeason, afterNumber }),
   setWatched: (mediaFileId: number, watched: boolean) => invoke<void>("set_watched", { mediaFileId, watched }),
   play: (mediaFileId: number, fromStart = false) => invoke<boolean>("player_play", { mediaFileId, fromStart }),
   stop: () => invoke<void>("player_stop"),
@@ -108,7 +112,35 @@ export const itemOf = (lib: Library, mediaFileId: number): Playable | undefined 
   lib.series.flatMap(episodesOf).find((e) => e.media_file_id === mediaFileId) ?? lib.movies.find((m) => m.media_file_id === mediaFileId);
 export const watchedCount = (s: Series) => episodesOf(s).filter((e) => e.watched).length;
 export const seasonName = (season: Season) => season.title || (season.number === 0 ? "Specials" : `Season ${season.number}`);
-export const code = (e: Episode) => `S${e.season_number} E${e.number}${e.number_end ? `-${e.number_end}` : ""}`;
+export const code = (e: Episode) => (e.season_number === 0 ? `Special ${e.number}` : `S${e.season_number} E${e.number}${e.number_end ? `-${e.number_end}` : ""}`);
+/** "season 2 episode 5", or "special 1". */
+export const spoken = (e: Episode) => (e.season_number === 0 ? `special ${e.number}` : `season ${e.season_number} episode ${e.number}`);
+/** Episodes in the order they are watched: placed specials sit between episodes, the rest come last. */
+export function watchOrder(s: Series) {
+  const byId = new Map(episodesOf(s).map((e) => [e.id, e]));
+  return s.watch_order.flatMap((id) => byId.get(id) ?? []);
+}
+
+/** Every spot a special can play in a series, in watch order, for the placement picker. */
+export function placements(s: Series) {
+  const spots: { label: string; season: number | null; number: number | null }[] = [];
+  for (const season of s.seasons.filter((x) => x.number > 0 && x.episodes.length)) {
+    spots.push({ label: `Before ${code(season.episodes[0])}, at the start of ${seasonName(season)}`, season: season.number, number: 0 });
+    for (const e of season.episodes) spots.push({ label: `After ${code(e)}: ${e.title}`, season: season.number, number: e.number });
+  }
+  spots.push({ label: "After everything, with the other specials", season: null, number: null });
+  return spots;
+}
+
+/** "Plays after S2 E5", or nothing for a special left at the end. */
+export function placement(s: Series, e: Episode) {
+  if (e.season_number !== 0 || e.after_season == null) return "";
+  const season = s.seasons.find((x) => x.number === e.after_season && x.episodes.length);
+  if (!season) return "";
+  if (e.after_number == null) return `Plays after ${seasonName(season)}`;
+  const follows = season.episodes.filter((x) => x.number <= e.after_number!).pop();
+  return follows ? `Plays after ${code(follows)}` : `Plays before ${code(season.episodes[0])}`;
+}
 
 export function playLabel(s: Series) {
   const e = resumeEpisode(s);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type Library, type PlayerState, type Track, api, clock, episodesOf, pickSubtitle, runtime, seasonName, thumb } from "../api";
+import { type Library, type PlayerState, type Track, api, clock, pickSubtitle, runtime, seasonName, thumb, watchOrder } from "../api";
 import { Icon, IconButton, Thumb } from "./ui";
 
 const SPEEDS = [1, 1.25, 1.5, 2, 0.75];
@@ -26,7 +26,8 @@ const trackMeta = (t: Track) => [t.codec.toUpperCase().replace("SUBRIP", "SRT").
 
 function find(lib: Library, mediaFileId: number) {
   for (const series of lib.series) {
-    const all = episodesOf(series);
+    // Watch order, so a special placed between episodes is what plays next.
+    const all = watchOrder(series);
     const index = all.findIndex((e) => e.media_file_id === mediaFileId);
     if (index >= 0) return { series, episode: all[index], next: all[index + 1], movie: undefined };
   }

@@ -28,6 +28,10 @@ pub struct Proposed {
     pub title: String,
     pub year: Option<i64>,
     pub include: bool,
+    /// For a special: the season it airs after, when the name or folder says so
+    /// ("Show S2 OVA", "Season 02/Show - OVA.mkv"). None leaves it at the end.
+    #[serde(default)]
+    pub after_season: Option<i64>,
 }
 
 static SXXEXX: LazyLock<Regex> =
@@ -47,6 +51,24 @@ static SAMPLE_DIR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(?:sampl
 static NUMBERED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d{1,3})[.) _-]+(\S.*)$").unwrap());
 static SEASON_DIR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(?:season|series|s)[ ._-]*(\d{1,2})$").unwrap());
+/// Folders that hold a series' specials, as Plex, Jellyfin and Kodi name them ("Season 00" is SEASON_DIR).
+static SPECIALS_DIR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(?:specials?|ovas?|sps?)$").unwrap());
+/// Bonus-material folders: Plex's local extras names plus the usual anime disc ones.
+/// What is in them is offered as a special of the series above, but left unticked.
+static EXTRAS_DIR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:extras?|bonus(?: features)?|featurettes?|behind the scenes|deleted scenes|interviews?|shorts|creditless|nc|ncop|nced)$").unwrap()
+});
+/// Special markers that are never ordinary words: a whole word anywhere, with an optional number.
+/// Kodi's anime rules group the same ones into season 0.
+static SPECIAL_TAG: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[\s(-])(OVA|OAV|OAD|SP|Picture Drama)(?:(?: - | ?)(\d{1,3}))?(?:v\d)?(?:$|[\s)-])").unwrap());
+/// "Special" is an ordinary word ("Special Forces", "Special Training"), so it only counts
+/// after other words and last in the name, or before a number, a closing bracket or a dash.
+static SPECIAL_WORD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\s(Specials?)(?:(?: - | ?)(\d{1,3}))?(?:$|\s*\)|\s+-\s)").unwrap());
+/// Creditless openings and endings from anime disc releases: extras, offered unticked.
+static CREDITLESS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[\s(-])(NCOP|NCED|Creditless (?:Opening|Ending|OP|ED))(?: ?(\d{1,2}))?(?:v\d)?(?:$|[\s)-])").unwrap());
 static YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(19\d{2}|20\d{2})\b").unwrap());
 static PAREN_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\((?:19|20)\d{2}\)").unwrap());
 static TRAILING_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\(?((?:19|20)\d{2})\)?$").unwrap());
@@ -141,13 +163,23 @@ fn dir_name(path: &Path, levels_up: usize) -> String {
         .unwrap_or_default()
 }
 
-/// The folder that names the series: the parent, or its parent when the file sits in a season folder.
-fn series_from_dirs(path: &Path) -> (String, Option<i64>) {
-    let parent = dir_name(path, 1);
-    match SEASON_DIR.captures(parent.trim()) {
-        Some(c) => (clean(&dir_name(path, 2)), c[1].parse().ok()),
-        None => (clean(&parent), None),
+/// The series and season a folder names: `levels_up` is the folder, and when it is a
+/// season or specials folder the series is the one above it.
+fn series_at(path: &Path, levels_up: usize) -> (String, Option<i64>) {
+    let dir = dir_name(path, levels_up);
+    if SPECIALS_DIR.is_match(dir.trim()) {
+        return (clean(&dir_name(path, levels_up + 1)), Some(0));
     }
+    match SEASON_DIR.captures(dir.trim()) {
+        Some(c) => (clean(&dir_name(path, levels_up + 1)), c[1].parse().ok()),
+        None => (clean(&dir), None),
+    }
+}
+
+/// The folder that names the series: the parent, or its parent when the file sits in a
+/// season folder. A specials folder counts as season 0.
+fn series_from_dirs(path: &Path) -> (String, Option<i64>) {
+    series_at(path, 1)
 }
 
 fn episode(path: &Path, series: String, season: i64, ep: i64, end: Option<i64>, rest: &str) -> Proposed {
@@ -163,7 +195,80 @@ fn episode(path: &Path, series: String, season: i64, ep: i64, end: Option<i64>, 
         title: if title.is_empty() { format!("Episode {ep}") } else { title },
         year: None,
         include: true,
+        after_season: None,
     }
+}
+
+/// A special in season 0. `number` 0 means the name gave none; `scan` numbers those.
+fn special(path: &Path, series: String, number: i64, title: String, after_season: Option<i64>) -> Proposed {
+    Proposed {
+        path: path.to_string_lossy().into_owned(),
+        kind: "episode".into(),
+        series,
+        season: 0,
+        season_title: None,
+        episode: number,
+        episode_end: None,
+        title,
+        year: None,
+        include: true,
+        after_season: after_season.filter(|s| *s > 0),
+    }
+}
+
+/// The name for a special with no title of its own: "OVA 2", "Special".
+fn special_label(tag: &str, number: Option<i64>) -> String {
+    let base = match tag.to_lowercase().as_str() {
+        "ova" | "oav" => "OVA",
+        "oad" => "OAD",
+        "picture drama" => "Picture drama",
+        "ncop" | "creditless opening" | "creditless op" => "Creditless opening",
+        "nced" | "creditless ending" | "creditless ed" => "Creditless ending",
+        _ => "Special",
+    };
+    number.map_or(base.to_string(), |n| format!("{base} {n}"))
+}
+
+/// File name with brackets dropped and separators as single spaces.
+fn spaced_name(stem: &str) -> String {
+    BRACKETS.replace_all(stem, " ").replace(['.', '_'], " ").split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Reads "Show - OVA 2 - The Beach", "Show S2 SP01", "Doctor Who - The Runaway Bride (Christmas Special)".
+fn parse_special(path: &Path, stem: &str, dir_series: &str, dir_season: Option<i64>) -> Option<Proposed> {
+    let spaced = spaced_name(stem);
+    let (marker, tag, number, extra) = [(&*CREDITLESS, true), (&*SPECIAL_TAG, false), (&*SPECIAL_WORD, false)].iter().find_map(|(re, extra)| {
+        let c = re.captures(&spaced)?;
+        let n = c.get(2).and_then(|n| n.as_str().parse::<i64>().ok());
+        Some((c.get(1).unwrap(), c[1].to_string(), n, *extra))
+    })?;
+    let edges = |c: char| c.is_whitespace() || c == '-';
+    let mut before = spaced[..marker.start()].trim_end_matches(edges);
+    // Inside brackets ("(Christmas Special)") the words before the bracket are the title.
+    if let Some(open) = before.rfind('(').filter(|open| before.rfind(')').is_none_or(|close| close < *open)) {
+        before = before[..open].trim_end_matches(edges);
+    }
+    // "Show S2 OVA": the season tag says where it airs and is not part of the name.
+    let mut tag_season = None;
+    if let Some(c) = ANIME_SEASON.captures(before) {
+        tag_season = c[1].parse::<i64>().ok();
+        before = before[..c.get(0).unwrap().start()].trim_end_matches(edges);
+    }
+    let (name, title_part) = match before.find(" - ") {
+        Some(dash) => (&before[..dash], before[dash + 3..].trim()),
+        None => (before, ""),
+    };
+    let series = Some(clean(name)).filter(|s| !s.is_empty()).unwrap_or_else(|| dir_series.to_string());
+    if series.is_empty() {
+        return None;
+    }
+    let rest = spaced[marker.end()..].trim_start_matches(|c: char| c.is_ascii_digit() || edges(c) || c == ')');
+    let rest = rest.strip_prefix('v').filter(|r| r.starts_with(|c: char| c.is_ascii_digit())).map_or(rest, |r| r.trim_start_matches(|c: char| c.is_ascii_digit() || edges(c)));
+    let after = Some(clean(rest)).filter(|t| t.chars().any(char::is_alphabetic));
+    let title = after.or(Some(clean(title_part)).filter(|t| !t.is_empty())).unwrap_or_else(|| special_label(&tag, number));
+    let mut found = special(path, series, number.unwrap_or(0), title, tag_season.or(dir_season));
+    found.include = !extra;
+    Some(found)
 }
 
 /// `numbered_ok` allows the "12. Lesson name" pattern, which is only trusted when
@@ -180,6 +285,18 @@ pub fn parse(path: &Path, numbered_ok: bool) -> Proposed {
 
 fn parse_name(path: &Path, numbered_ok: bool) -> Proposed {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    // Bonus material ("Show/Extras/Making Of.mkv") is a special of the series above, unticked.
+    if EXTRAS_DIR.is_match(dir_name(path, 1).trim()) {
+        let (series, season) = series_at(path, 2);
+        if !series.is_empty() {
+            let title = clean(&stem);
+            let mut extra = parse_special(path, &stem, &series, season)
+                .unwrap_or_else(|| special(path, series.clone(), 0, if title.is_empty() { stem.clone() } else { title }, season));
+            extra.series = series;
+            extra.include = false;
+            return extra;
+        }
+    }
     let (dir_series, dir_season) = series_from_dirs(path);
     let named = |before: &str| {
         let s = clean(before);
@@ -194,6 +311,11 @@ fn parse_name(path: &Path, numbered_ok: bool) -> Proposed {
     if let Some(c) = NXNN.captures(&stem) {
         let (s, e) = (c.get(1).unwrap(), c.get(2).unwrap());
         return episode(path, named(&stem[..s.start()]), c[1].parse().unwrap(), c[2].parse().unwrap(), None, &stem[e.end()..]);
+    }
+    // Specials come before the looser patterns: "Show OVA - 02" is OVA 2, not episode 2.
+    // A special in a season folder airs after that season.
+    if let Some(found) = parse_special(path, &stem, &dir_series, dir_season) {
+        return found;
     }
     if let Some(c) = EPISODE.captures(&stem) {
         let m = c.get(0).unwrap();
@@ -234,6 +356,18 @@ fn parse_name(path: &Path, numbered_ok: bool) -> Proposed {
         }
     }
 
+    // Anything else in a specials folder is a special of the series above ("Specials/The Making Of.mkv").
+    if dir_season == Some(0) && !dir_series.is_empty() {
+        // "Dark - Making Of" in Dark's specials: the series name is not part of the title.
+        let title = clean(&stem);
+        let title = title
+            .get(dir_series.len()..)
+            .filter(|_| match_key(title.get(..dir_series.len()).unwrap_or_default()) == match_key(&dir_series))
+            .map(|rest| rest.trim_start_matches(|c: char| c.is_whitespace() || c == '-').to_string())
+            .filter(|rest| !rest.is_empty())
+            .unwrap_or(title);
+        return special(path, dir_series, 0, if title.is_empty() { stem } else { title }, None);
+    }
     let year = release_year(&stem);
     let title = clean(&stem);
     Proposed {
@@ -247,6 +381,7 @@ fn parse_name(path: &Path, numbered_ok: bool) -> Proposed {
         title: if title.is_empty() { stem } else { title },
         year,
         include: year.is_some(),
+        after_season: None,
     }
 }
 
@@ -279,6 +414,22 @@ pub fn video_files(paths: &[String]) -> Vec<PathBuf> {
     files
 }
 
+/// Gives specials whose names carry no number the next free numbers in their series,
+/// in file order, so "OVA" and "OVA - The Beach" don't both become special 0.
+fn number_specials(proposed: &mut [Proposed]) {
+    let is_special = |p: &Proposed| p.kind == "episode" && p.season == 0;
+    let mut top: HashMap<String, i64> = HashMap::new();
+    for p in proposed.iter().filter(|p| is_special(p)) {
+        let n = top.entry(match_key(&p.series)).or_default();
+        *n = (*n).max(p.episode);
+    }
+    for p in proposed.iter_mut().filter(|p| is_special(p) && p.episode == 0) {
+        let n = top.entry(match_key(&p.series)).or_default();
+        *n += 1;
+        p.episode = *n;
+    }
+}
+
 /// Expands folders, keeps video files, and proposes where each one belongs.
 pub fn scan(paths: &[String]) -> Vec<Proposed> {
     let files = video_files(paths);
@@ -301,6 +452,7 @@ pub fn scan(paths: &[String]) -> Vec<Proposed> {
             parse(f, siblings >= 2 || in_numbered_dir)
         })
         .collect();
+    number_specials(&mut proposed);
     proposed.sort_by(|a, b| {
         (a.kind != "episode", a.series.to_lowercase(), a.season, a.episode, &a.title)
             .cmp(&(b.kind != "episode", b.series.to_lowercase(), b.season, b.episode, &b.title))
@@ -470,8 +622,99 @@ mod tests {
     fn files_with_a_year_are_movies_and_others_are_left_out() {
         let movie = parse(Path::new(r"C:\x\Heat (1995) 1080p BluRay.mkv"), false);
         assert_eq!((movie.kind.as_str(), movie.title.as_str(), movie.year, movie.include), ("movie", "Heat", Some(1995), true));
-        let extra = parse(Path::new(r"C:\x\Extras\Deleted Scenes.mkv"), false);
-        assert_eq!((extra.kind.as_str(), extra.include), ("unsorted", false));
+        let stray = parse(Path::new(r"C:\x\Deleted Scenes.mkv"), false);
+        assert_eq!((stray.kind.as_str(), stray.include), ("unsorted", false));
+    }
+
+    /// (series, season, episode, title, include, after_season)
+    fn sp(path: &str) -> (String, i64, i64, String, bool, Option<i64>) {
+        let p = parse(Path::new(path), false);
+        assert_eq!((p.kind.as_str(), p.season), ("episode", 0), "{path} should be a special");
+        (p.series, p.season, p.episode, p.title, p.include, p.after_season)
+    }
+
+    #[test]
+    fn an_ova_without_a_number_is_a_special_numbered_later() {
+        assert_eq!(sp(r"C:\x\[Group] Frieren - OVA [1080p].mkv"), ("Frieren".into(), 0, 0, "OVA".into(), true, None));
+    }
+
+    #[test]
+    fn sp01_is_special_1() {
+        assert_eq!(sp(r"C:\x\[SubsPlease] Bocchi the Rock! - SP01 (1080p) [ABCD1234].mkv"), ("Bocchi the Rock!".into(), 0, 1, "Special 1".into(), true, None));
+    }
+
+    #[test]
+    fn oav_oad_and_picture_drama_are_specials_too() {
+        assert_eq!(sp(r"C:\x\Hellsing Ultimate OAV 03.mkv").3, "OVA 3");
+        assert_eq!(sp(r"C:\x\[Group] Attack on Titan - OAD 2 [BD].mkv").3, "OAD 2");
+        assert_eq!(sp(r"C:\x\Toradora - Picture Drama 1.mkv").3, "Picture drama 1");
+    }
+
+    #[test]
+    fn a_number_after_a_dash_belongs_to_the_ova_not_to_an_episode() {
+        assert_eq!(sp(r"C:\x\[Group] Show OVA - 02 [720p].mkv"), ("Show".into(), 0, 2, "OVA 2".into(), true, None));
+    }
+
+    #[test]
+    fn a_season_tag_before_the_special_says_where_it_airs() {
+        assert_eq!(sp(r"C:\x\Mushoku Tensei S2 OVA 2 - The Beach.mkv"), ("Mushoku Tensei".into(), 0, 2, "The Beach".into(), true, Some(2)));
+    }
+
+    #[test]
+    fn a_special_in_a_season_folder_airs_after_that_season() {
+        assert_eq!(sp(r"D:\TV\Mushoku Tensei\Season 2\Mushoku Tensei - OVA.mkv").5, Some(2));
+    }
+
+    #[test]
+    fn a_christmas_special_keeps_its_episode_title() {
+        assert_eq!(
+            sp(r"D:\TV\Doctor Who (2005) - The Runaway Bride (Christmas Special).mkv"),
+            ("Doctor Who".into(), 0, 0, "The Runaway Bride".into(), true, None)
+        );
+        assert_eq!(sp(r"D:\TV\The Office - Christmas Special 2.mkv").2, 2);
+    }
+
+    #[test]
+    fn special_as_an_ordinary_word_is_not_a_special() {
+        let film = parse(Path::new(r"C:\x\Special Forces (2011).mkv"), false);
+        assert_eq!((film.kind.as_str(), film.title.as_str()), ("movie", "Special Forces"));
+        assert_eq!(ep(r"C:\x\[Group] Show - 05 - Special Training [1080p].mkv"), ("Show".into(), 1, 5, None, "Episode 5".into()));
+        assert_eq!(parse(Path::new(r"C:\x\Casanova (2005).mkv"), false).kind, "movie", "OVA inside a word");
+    }
+
+    #[test]
+    fn an_explicit_s00e_number_still_wins() {
+        assert_eq!(ep(r"C:\x\Dark.S00E02.OVA.mkv"), ("Dark".into(), 0, 2, None, "OVA".into()));
+    }
+
+    #[test]
+    fn everything_in_a_specials_folder_belongs_to_the_series_above() {
+        assert_eq!(sp(r"D:\TV\Dark\Specials\Dark - Making Of.mkv"), ("Dark".into(), 0, 0, "Making Of".into(), true, None));
+        assert_eq!(sp(r"D:\TV\Dark\Specials\Episode 3.mkv"), ("Dark".into(), 0, 3, "Episode 3".into(), true, None));
+        assert_eq!(sp(r"D:\TV\Dark\Season 00\Behind Dark.mkv").0, "Dark");
+    }
+
+    #[test]
+    fn extras_folders_are_offered_as_specials_but_not_ticked() {
+        assert_eq!(sp(r"D:\TV\Severance\Extras\Behind the Scenes.mkv"), ("Severance".into(), 0, 0, "Behind the Scenes".into(), false, None));
+        assert_eq!(sp(r"D:\TV\Severance\Season 1\Featurettes\Cast Interview.mkv"), ("Severance".into(), 0, 0, "Cast Interview".into(), false, Some(1)));
+    }
+
+    #[test]
+    fn creditless_openings_are_extras() {
+        assert_eq!(sp(r"C:\x\[Group] Frieren - NCOP1 [BD 1080p].mkv"), ("Frieren".into(), 0, 1, "Creditless opening 1".into(), false, None));
+        assert_eq!(sp(r"C:\x\[Group] Frieren - NCED [BD 1080p].mkv").3, "Creditless ending");
+    }
+
+    #[test]
+    fn unnumbered_specials_take_the_next_free_numbers_in_their_series() {
+        let mut found: Vec<Proposed> = [r"C:\x\Show - SP02.mkv", r"C:\x\Show - OVA.mkv", r"C:\x\Show - OVA - Beach.mkv", r"C:\y\Other - OVA.mkv"]
+            .iter()
+            .map(|p| parse(Path::new(p), false))
+            .collect();
+        number_specials(&mut found);
+        let numbers: Vec<(&str, i64)> = found.iter().map(|p| (p.series.as_str(), p.episode)).collect();
+        assert_eq!(numbers, vec![("Show", 2), ("Show", 3), ("Show", 4), ("Other", 1)]);
     }
 
     #[test]

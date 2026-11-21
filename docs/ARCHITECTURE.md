@@ -25,7 +25,7 @@ The video never passes through the webview. mpv draws into a native child window
 
 | File | Owns | Notes |
 |---|---|---|
-| `organiser.rs` | Turning a path into a `Proposed` | Pure. Patterns tried in order: `S01E02` (and `S01E01E02`), `1x02`, `Episode 12`, anime ` - 12`, then `12. Name` when the folder has siblings like it or is itself numbered. Series name is the text before the match, cleaned of release tags; if empty, it comes from the folders. No pattern: movie if the name has a year, otherwise unsorted and left out by default. |
+| `organiser.rs` | Turning a path into a `Proposed` | Pure. Patterns tried in order: `S01E02` (and `S01E01E02`), `1x02`, specials, `Episode 12`, anime ` - 12`, then `12. Name` when the folder has siblings like it or is itself numbered. Series name is the text before the match, cleaned of release tags; if empty, it comes from the folders. No pattern: movie if the name has a year, otherwise unsorted and left out by default. **Specials** (season 0): `OVA`, `OAV`, `OAD`, `SP`, `Picture Drama` anywhere as a word; `Special` only after other words and last, or before a number, `)` or ` - `, since it is an ordinary word. A season tag before it (`Show S2 OVA`) or a season folder sets `after_season`. `Specials`/`Season 00` folders make everything in them a special of the series above. Extras (`NCOP`/`NCED`, and Plex's extras folder names such as `Extras`, `Featurettes`, `Deleted Scenes`) become unticked specials. `scan` gives unnumbered specials the next free numbers per series. |
 | `db.rs` | All SQL, and the rules for watched, resume point and which episode Play starts | `is_watched`: 92% through or under 2 minutes left. Watched is sticky: only "Mark as unwatched" clears it. `resume_position_ms`: 3 s before the saved point; from the start if that point is in the credits or under 10 s in. `pick_resume`: most recently played unfinished episode (unless something was finished or hand-marked after it), else the first unwatched after the last watched, else the first unwatched anywhere, else the first. Play requests carry a turn number (`Player::begin`), so a slow one that was overtaken by a stop or a newer play does nothing. |
 | `player.rs` | The mpv instance that plays | `vo=gpu-next`, `hwdec=auto-safe`, `keep-open` (so the end of a file is a state the UI can see), all mpv input and on-screen controls off. Remembers which media file is loaded so progress is saved against it. |
 | `thumbs.rs` | Frames from the user's files, on one worker thread | **Thumbnails**: an mpv renders into a hidden window so frames go through the same tone-mapping as playback. Seeks 10% in, screenshots at 960 px wide, stores `<thumbs>/<media_file_id>.jpg`, reads duration and size. Stands down while the player has something loaded. Emits `library-changed`. **Scrubber previews**: a separate mpv with `vo=image`, CPU decoding on two threads and keyframe seeks writes 320 px frames to `<thumbs>/making/`, which are moved to `<thumbs>/p<media_file_id>_<step>.jpg` (one step per 10 s) and kept. It serves requests during playback and never touches the GPU: a GPU renderer here cost a 4K HDR file about fifty dropped frames per scrub. Only the newest pending request is served; the file is let go after 20 s without one. |
@@ -49,7 +49,9 @@ SQLite at `%APPDATA%\com.mandar.marquee\library.db` (WAL), thumbnails beside it 
 
 Files are referenced in place. Removing anything deletes rows and cached thumbnails only.
 
-Schema changes go in as a new step keyed on `PRAGMA user_version` (currently 2). Shipped schema strings are never edited.
+Schema changes go in as a new step keyed on `PRAGMA user_version` (currently 3). Shipped schema strings are never edited.
+
+**Watch order.** `episodes.after_season` / `after_number` (v3) place a special the way TheTVDB's "airs after" does: after the last episode of that season numbered `after_number` or less (0 = before the season, NULL = after its end). Unplaced specials, and ones whose season is gone, come last. `watch_order` (pure, tested) turns that into the order `pick_resume`, `Series.watch_order` and the player's next episode all use. Importing a special whose number is taken in that series gives it the next free one. Moving an episode into Specials places it where it was; moving one out clears its placement.
 
 **Track memory.** Choosing an audio or subtitle track stores its language for the series. Each load sets mpv's `alang`/`slang` from that and resets `aid`/`sid` to `auto` (or `sid=no`), so a track picked by number in one file is never applied to the next.
 
@@ -64,7 +66,8 @@ Schema changes go in as a new step keyed on `PRAGMA user_version` (currently 2).
 | `import_commit(items)` | Saves the reviewed proposals; returns how many were new |
 | `rename_item(kind, id, title)` | `series`, `season`, `episode`, `movie` |
 | `remove_item(kind, id)` | `series`, `episode`, `movie` |
-| `create_series`, `add_season`, `move_episode`, `set_watched` | Manual organising |
+| `create_series`, `add_season`, `move_episode(episode_id, season_number, number?)`, `set_watched` | Manual organising |
+| `place_special(episode_id, after_season?, after_number?)` | Where a special plays in watch order; refuses anything not in Specials |
 | `file_missing(media_file_id)` | Whether the file is still at its path |
 | `relink_file(media_file_id, path)`, `relink_folder(paths)` | Point library items at where their files are now. The second returns (found, still missing). |
 | `watch_folders`, `add_watch_folder(path)`, `remove_watch_folder(id)` | Adding sweeps the folder at once and returns how many files it added |

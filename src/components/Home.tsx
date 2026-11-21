@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type Episode, type Library, type Movie, type Series, api, code, episodesOf, fraction, plural, resumeEpisode, runtime, thumb } from "../api";
+import { type Episode, type Library, type Movie, type Series, api, code, episodesOf, fraction, plural, resumeEpisode, runtime, spoken, thumb } from "../api";
 import { Gallery } from "./Gallery";
 import { Confirm, Frame, Icon, InlineEdit, Menu, Progress, RowMain, Thumb } from "./ui";
 
@@ -23,7 +23,7 @@ function ongoing(lib: Library): Ongoing[] {
     const e = resumeEpisode(s);
     const touched = all.filter((x) => x.last_played_at != null);
     if (!e || !touched.length || all.every((x) => x.watched)) continue;
-    out.push({ key: `s${s.id}`, at: Math.max(...touched.map((x) => x.last_played_at!)), title: e.title, where: `${s.title}, season ${e.season_number} episode ${e.number}`, item: e, series: s });
+    out.push({ key: `s${s.id}`, at: Math.max(...touched.map((x) => x.last_played_at!)), title: e.title, where: `${s.title}, ${spoken(e)}`, item: e, series: s });
   }
   for (const m of lib.movies) {
     if (m.position_ms > 0 && !m.watched) out.push({ key: `m${m.id}`, at: m.last_played_at ?? 0, title: m.title, where: m.year ? `Movie, ${m.year}` : "Movie", item: m });

@@ -214,6 +214,11 @@ dialog[open]::backdrop { animation: fade var(--base) var(--ease); }
 .confirm p { margin: 12px 0 24px; color: var(--text-secondary); font-size: var(--text-small); }
 .confirm .actions { justify-content: flex-end; }
 .confirm .where { color: var(--text); overflow-wrap: anywhere; }
+/* Change number or order: season and number side by side, the placement under them. */
+.place-fields { display: grid; grid-template-columns: 1fr 120px; gap: 16px; margin: 16px 0 24px; }
+.place-fields label { display: grid; gap: 4px; align-content: start; }
+.place-fields .wide { grid-column: 1 / -1; }
+.place-fields select.field option { background: var(--surface); color: var(--text); }
 
 /* Settings */
 .settings { max-width: 880px; }

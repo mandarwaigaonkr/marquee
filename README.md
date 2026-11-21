@@ -22,8 +22,9 @@ Media servers solve this, but they want a server running, an account, and files 
 
 | | |
 |---|---|
-| **Sorts by file name** | Reads `Show.S02E01.1080p.mkv`, `Show (2011) - S01E01 - Pilot.mkv`, `1x02`, `Season 2\Episode 12.mkv`, anime `Name - 12`, and numbered course folders. Seasons in different folders merge into one series. You review the result before it is saved. |
-| **Lets you fix anything** | Rename a series, season or episode in place, move an episode, add a season, mark watched. What you change by hand is never overwritten. |
+| **Sorts by file name** | Reads `Show.S02E01.1080p.mkv`, `Show (2011) - S01E01 - Pilot.mkv`, `1x02`, `Season 2\Episode 12.mkv`, anime `Name - 12`, and numbered course folders. Specials go to their own season: `S00E01`, `OVA`, `OAD`, `SP01`, `Christmas Special`, and `Specials` or `Season 00` folders. Extras (`NCOP`, `Extras`, `Featurettes`) are offered but not ticked. Seasons in different folders merge into one series. You review the result before it is saved. |
+| **Lets you fix anything** | Rename a series, season or episode in place, move or renumber an episode, add a season, mark watched. What you change by hand is never overwritten. |
+| **Plays specials where they belong** | Put a special after any episode and Play and the next-episode countdown follow that order. `Show S2 OVA` lands after season 2 by itself. An episode moved into Specials keeps its place. |
 | **Resumes** | Progress is saved every five seconds. Play picks the episode you were on, three seconds before where you stopped. |
 | **Plays the next episode** | A short countdown at the end, across seasons. |
 | **Plays everything** | Built on [mpv](https://mpv.io): MKV, MP4, AVI, WebM; H.264, HEVC, AV1, VP9; 4K and HDR with tone mapping; GPU decoding. |

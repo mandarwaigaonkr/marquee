@@ -12,3 +12,4 @@
 - Scrubber previews must not use a GPU mpv: a second gpu-next cost ~50 dropped frames per scrub on 4K HDR. `thumbs.rs` uses vo=image.
 - `showModal()` focuses the first button and ignores React `autoFocus` on a later one; focus it by hand after (`MissingFile` in `ui.tsx`).
 - Driving the UI by script: React pointer enter/leave only fire from `pointerover`/`pointerout` with relatedTarget set.
+- `tauri dev` panics WebView2 0x8007139F if installed Marquee is open (shared profile): set WEBVIEW2_USER_DATA_FOLDER.

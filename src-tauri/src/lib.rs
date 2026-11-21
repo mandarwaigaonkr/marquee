@@ -63,6 +63,11 @@ fn move_episode(db: State<Db>, episode_id: i64, season_number: i64, number: Opti
 }
 
 #[tauri::command]
+fn place_special(db: State<Db>, episode_id: i64, after_season: Option<i64>, after_number: Option<i64>) -> Res<()> {
+    db.place_special(episode_id, after_season, after_number)
+}
+
+#[tauri::command]
 fn set_watched(db: State<Db>, media_file_id: i64, watched: bool) -> Res<()> {
     db.set_watched(media_file_id, watched)
 }
@@ -294,6 +299,7 @@ pub fn run() {
             create_series,
             add_season,
             move_episode,
+            place_special,
             set_watched,
             file_missing,
             relink_file,
