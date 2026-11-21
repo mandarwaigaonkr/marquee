@@ -1,6 +1,6 @@
 [package]
 name = "marquee"
-version = "0.1.0"
+version = "0.2.0"
 description = "A library and player for local video files"
 authors = ["Mandar Waigaonkar"]
 edition = "2024"

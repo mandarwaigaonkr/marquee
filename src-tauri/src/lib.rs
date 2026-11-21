@@ -321,3 +321,18 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    /// The version lives in three files; an installer must not claim a different one than the app.
+    #[test]
+    fn every_file_carries_the_same_version() {
+        let version_in = |json: &str| -> String {
+            let value: serde_json::Value = serde_json::from_str(json).unwrap();
+            value["version"].as_str().unwrap().to_string()
+        };
+        let cargo = env!("CARGO_PKG_VERSION");
+        assert_eq!(version_in(include_str!("../tauri.conf.json")), cargo, "tauri.conf.json");
+        assert_eq!(version_in(include_str!("../../package.json")), cargo, "package.json");
+    }
+}
